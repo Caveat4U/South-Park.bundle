@@ -17,7 +17,7 @@ def MainMenu():
 
 	oc = ObjectContainer(no_cache=True)
 	
-	oc.add(InputDirectoryObject(key=Callback(episode_search),
+	oc.add(InputDirectoryObject(key=Callback(EpisodeSearch),
                title='Search',
                summary='Search for South Park episodes by name.',
                prompt="Enter the name of a South Park episode"
@@ -89,47 +89,50 @@ def RandomEpisode():
 
 			return unicode(url)
 
-####################################################################################################
-def videos(url, count=0, limit=100, after='', sort=None):
-    """ This method returns all the video links for any specific page. """
-    oc = ObjectContainer()
-    url += '?count=%d&limit=%d&after=%s' % (count, limit, after)
-    if sort:
-        url += '&sort=top&t=%s' % sort
-    search_page = JSON.ObjectFromURL(url, sleep=2.0, cacheTime=600, headers={'User-Agent': USER_AGENT})
-    @parallelize
-    def get_videos():
-        for video_child in search_page['data']['children']:
-            @task
-            def get_video(video_post=video_child):
-                reddit_video = VideoData(video_post)
-                if Prefs['show_score']:
-                    video_title = reddit_video.score + " | " + reddit_video.title
-                for video_url in reddit_video.urls:
-                    if good_url(video_url):
-                        if Prefs['show_comment_menu']:
-                            oc.add(DirectoryObject(key=Callback(
-                                commented_videos, video_url=video_url, video_id=reddit_video.id,
-                                video_subreddit=reddit_video.subreddit, video_title=video_title,
-                                video_summary=reddit_video.summary), title=video_title, thumb=reddit_video.thumbnail))
-                        else:
-                            video_object = URLService.MetadataObjectForURL(video_url)
-                            video_object.title = String.StripTags(video_title)
-                            video_object.summary = String.StripTags(reddit_video.summary)
-                            oc.add(video_object)
-    # Find/Add Next Menu
-    after = search_page['data'].get('after')
-    count += limit
-    if after:
-        oc.add(NextPageObject(key=Callback(videos, url=url, count=count, limit=limit, after=after), title='Next ...'))
-    return oc
+##################SEARCH#############################################################################
+""" Still don't know pupose of route @route('/video/southpark/episodes') """
+""" This seems HEAVY, but I can't think of another way at 2AM to do this.
+    Pull down ALL the episodes listings and look in title for the query we entered. If the query has a partial match,
+    add it to the oc.
+    Problem is our client has to do the heavy listing and do 17 different JSON requests.
+    I wonder if there's a way to tap into the search functionality on the http://www.southparkstudios.com/full-episodes
+    search page? Maybe submit the GET reuqest?
+    It would be AWESOME to have access to the South Park API docs...or just a RESTful url to access...
+"""
+def EpisodeSearch(query):
+	oc = ObjectContainer(query)
+	#TODO make this more dynamic, right now it just assumes 17 seasons.
+	for season in range(1,17):
+		for episode in JSON.ObjectFromURL(SEASON_JSON_URL % season)['season']['episode']:
 
+			if episode['available'] != 'true':
+				continue
 
-###############################################  SEARCH  ###########################################################
-def episode_search(query):
-    """ Search for any South Park video by title."""
-    oc = ObjectContainer()
-    search_url = "http://www.reddit.com/domain/youtube.com/search.json?q=%s&restrict_sr=on" % query
-    title = 'Searching for "%s"....' % query
-    oc.add(DirectoryObject(key=Callback(videos, url=search_url), title=title))
-    return oc
+			title = episode['title']
+			
+			#TODO: Make the search more robust.
+			if query not in title:
+				continue
+			
+			url = unicode(episode['url'])
+			summary = episode['description']
+			originally_available_at = Datetime.ParseDate(episode['airdate'])
+			index = episode['episodenumber'][-2:]
+			thumb = episode['thumbnail'].split('?')[0]
+
+			oc.add(EpisodeObject(
+				url = url,
+				show = NAME,
+				title = title,
+				summary = summary,
+				originally_available_at = originally_available_at,
+				season = int(season),
+				index = int(index),
+				thumb = Resource.ContentsOfURLWithFallback(thumb)
+			))
+
+	if len(oc) < 1:
+		return ObjectContainer(header="Empty", message="This season doesn't contain any episodes.")
+	else:
+		oc.objects.sort(key = lambda obj: obj.index)
+		return oc
