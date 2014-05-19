@@ -16,6 +16,12 @@ def Start():
 def MainMenu():
 
 	oc = ObjectContainer(no_cache=True)
+	
+	oc.add(InputDirectoryObject(key=Callback(enter_manual),
+               title='Search',
+               summary='Search for South Park episodes by name.',
+               prompt="Enter the name of a South Park episode"
+        ))
 
 	oc.add(VideoClipObject(
 		url = RandomEpisode(),
