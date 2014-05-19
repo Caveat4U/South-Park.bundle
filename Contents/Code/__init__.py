@@ -17,7 +17,7 @@ def MainMenu():
 
 	oc = ObjectContainer(no_cache=True)
 	
-	oc.add(InputDirectoryObject(key=Callback(enter_manual),
+	oc.add(InputDirectoryObject(key=Callback(episode_search),
                title='Search',
                summary='Search for South Park episodes by name.',
                prompt="Enter the name of a South Park episode"
@@ -88,3 +88,48 @@ def RandomEpisode():
 				url = '%s%s' % (BASE_URL, url)
 
 			return unicode(url)
+
+####################################################################################################
+def videos(url, count=0, limit=100, after='', sort=None):
+    """ This method returns all the video links for any specific page. """
+    oc = ObjectContainer()
+    url += '?count=%d&limit=%d&after=%s' % (count, limit, after)
+    if sort:
+        url += '&sort=top&t=%s' % sort
+    search_page = JSON.ObjectFromURL(url, sleep=2.0, cacheTime=600, headers={'User-Agent': USER_AGENT})
+    @parallelize
+    def get_videos():
+        for video_child in search_page['data']['children']:
+            @task
+            def get_video(video_post=video_child):
+                reddit_video = VideoData(video_post)
+                if Prefs['show_score']:
+                    video_title = reddit_video.score + " | " + reddit_video.title
+                for video_url in reddit_video.urls:
+                    if good_url(video_url):
+                        if Prefs['show_comment_menu']:
+                            oc.add(DirectoryObject(key=Callback(
+                                commented_videos, video_url=video_url, video_id=reddit_video.id,
+                                video_subreddit=reddit_video.subreddit, video_title=video_title,
+                                video_summary=reddit_video.summary), title=video_title, thumb=reddit_video.thumbnail))
+                        else:
+                            video_object = URLService.MetadataObjectForURL(video_url)
+                            video_object.title = String.StripTags(video_title)
+                            video_object.summary = String.StripTags(reddit_video.summary)
+                            oc.add(video_object)
+    # Find/Add Next Menu
+    after = search_page['data'].get('after')
+    count += limit
+    if after:
+        oc.add(NextPageObject(key=Callback(videos, url=url, count=count, limit=limit, after=after), title='Next ...'))
+    return oc
+
+
+###############################################  SEARCH  ###########################################################
+def episode_search(query):
+    """ Search for any South Park video by title."""
+    oc = ObjectContainer()
+    search_url = "http://www.reddit.com/domain/youtube.com/search.json?q=%s&restrict_sr=on" % query
+    title = 'Searching for "%s"....' % query
+    oc.add(DirectoryObject(key=Callback(videos, url=search_url), title=title))
+    return oc
