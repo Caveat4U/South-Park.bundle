@@ -20,7 +20,7 @@ def MainMenu():
 	oc.add(InputDirectoryObject(key=Callback(EpisodeSearch),
                title='Search',
                summary='Search for South Park episodes by name.',
-               prompt="Enter the name of a South Park episode"
+               prompt="Search by title"
         ))
 
 	oc.add(VideoClipObject(
@@ -89,19 +89,17 @@ def RandomEpisode():
 
 			return unicode(url)
 
-##################SEARCH#############################################################################
-""" Still don't know pupose of route @route('/video/southpark/episodes') """
-""" This seems HEAVY, but I can't think of another way at 2AM to do this.
+################## SEARCH ##########################################################################
+""" This seems HEAVY, but I can't think of another way to easily do this.
     Pull down ALL the episodes listings and look in title for the query we entered. If the query has a partial match,
     add it to the oc.
-    Problem is our client has to do the heavy listing and do 17 different JSON requests.
+    Problem is our client has to do the heavy lifing and do 17 different JSON requests.
     I wonder if there's a way to tap into the search functionality on the http://www.southparkstudios.com/full-episodes
-    search page? Maybe submit the GET reuqest?
+    search page? Maybe submit the GET reuqest and parse the page from there?
     It would be AWESOME to have access to the South Park API docs...or just a RESTful url to access...
 """
 def EpisodeSearch(query):
-	oc = ObjectContainer(query)
-	#TODO make this more dynamic, right now it just assumes 17 seasons.
+	oc = ObjectContainer()
 	for season in range(1,17):
 		for episode in JSON.ObjectFromURL(SEASON_JSON_URL % season)['season']['episode']:
 
@@ -110,8 +108,7 @@ def EpisodeSearch(query):
 
 			title = episode['title']
 			
-			#TODO: Make the search more robust.
-			if query not in title:
+			if title.find(query) == -1:
 				continue
 			
 			url = unicode(episode['url'])
@@ -132,7 +129,8 @@ def EpisodeSearch(query):
 			))
 
 	if len(oc) < 1:
-		return ObjectContainer(header="Empty", message="This season doesn't contain any episodes.")
+		no_results_message = "No results were found for " + str(query)
+		return ObjectContainer(header="Empty", message=no_results_message)
 	else:
 		oc.objects.sort(key = lambda obj: obj.index)
 		return oc
